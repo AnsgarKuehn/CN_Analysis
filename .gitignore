@@ -1,0 +1,6 @@
+Data/*
+.virtualenvironment/
+.certificate/
+
+# Jupyter NB Checkpoints
+.ipynb_checkpoints/
