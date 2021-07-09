@@ -1,11 +1,9 @@
 import pandas as pd
 import numpy as np
-#path = '../Data/raw/VF_008_analysis_ref_centroid/tomo_gray_SUB_008_002_mink_val/'
-#xyz_path = '../Data/raw/VF_008_analysis_ref_centroid/tomo_gray_SUB_008_002.xyz'
-#save_path = ''
 
 
 def read_mf(df, path):
+    
     data = pd.read_table(path + 'w000_w100_w200_w300', delimiter = '\s+', comment = '#', engine = 'python', index_col = 0,
                  names = ['value', 'type', 'closed', 'reference'])
 
@@ -16,6 +14,7 @@ def read_mf(df, path):
 
 
 def read_mv(df, path):
+    
     data = pd.read_table(path + 'w010_w110_w210_w310', delimiter = '\s+', comment = '#', engine = 'python', index_col = 0,
                  names = ['value_x', 'value_y', 'value_z', 'type', 'closed', 'reference'])
 
@@ -26,6 +25,7 @@ def read_mv(df, path):
 
 
 def read_mt(df, path):
+    
     for tensor in ['w020_eigsys', 'w120_eigsys', 'w220_eigsys', 'w320_eigsys', 'w102_eigsys', 'w202_eigsys']:
         data = pd.read_table(path + tensor, delimiter = '\s+', comment = '#', engine = 'python', index_col = 0,
                      names = [tensor+'Ev1', 'v1_x', 'v1_y', 'v1_z', 
@@ -36,6 +36,7 @@ def read_mt(df, path):
 
 
 def read_qw(df, path):
+    
     qw = ['q0', 'w0', 'q1', 'w1', 'q2', 'w2', 'q3', 'w3', 'q4', 'w4', 'q5', 'w5', 'q6', 'w6', 'q7', 'w7', 'q8', 'w8']
     data = pd.read_table(path + 'msm_ql', delimiter = '\s+', comment = '#', engine = 'python', index_col = 0,
                  names = qw + ['type', 'closed', 'reference'])
@@ -44,12 +45,15 @@ def read_qw(df, path):
 
 
 def read_xyz(df, xyz_path):
+    
     xyz = pd.read_table(xyz_path, delimiter = r'\s+', names = ['P', 'x', 'y', 'z'], header=1)
+    #index starts at 1 but is read in starting at 0. Thus, the correction
     xyz.index += 1
     df[['x', 'y', 'z']] = xyz.loc[df.index, ['x', 'y', 'z']]
     return df
 
 def anisotropy_and_centroid(df):
+    
     for j in ['0', '1', '2', '3']:
         #curvature centroids
         for i in ['x', 'y', 'z']:
@@ -81,7 +85,7 @@ def process_measurement(path, xyz_path):
 
     return df
 
-def cut_df(df, r_th = 30, z_th = 50):
+def cut_df(df, r_th = 30, z_th = 30):
     x_mean = df.x.mean()
     y_mean = df.y.mean()
     df['r'] = np.sqrt(np.square(df.x-x_mean)+np.square(df.y - y_mean))
