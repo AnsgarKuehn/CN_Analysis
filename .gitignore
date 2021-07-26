@@ -1,5 +1,5 @@
 Data/*
-.virtualenvironment/
+.venv/
 .certificate/
 
 # Jupyter NB Checkpoints

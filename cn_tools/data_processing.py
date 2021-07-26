@@ -1,6 +1,72 @@
 import pandas as pd
 import numpy as np
+import os
+from tqdm import trange
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from cn_tools.cns_fit import approximate_diameter
 
+def prepare_df(df, scale_and_split = False):
+    df['lpf'] = (4/3*np.pi*(df.diameter/2)**3)/df.w000
+    
+    x_mean = df.x.mean()
+    y_mean = df.y.mean()
+    df['r'] = np.sqrt(np.square(df.x-x_mean)+np.square(df.y - y_mean))
+
+    df = cut_df(df)
+    if not scale_and_split:
+        return df
+    else:
+        scaler = StandardScaler()
+        scaler.fit(df[features])
+        return train_test_split(
+                pd.DataFrame(scaler.transform(df[features]), columns=features), df.contact_number, 
+            test_size = 0.1,random_state = 42)
+
+    
+def cut_df(df):
+    res = approximate_diameter(df.index[0][:7])
+    #r_min, r_max, z_min, z_max
+    bounds = {20:[30, 200, 100, 400], 
+              30:[45, 300, 135, 600]}
+    r_min, r_max, z_min, z_max = bounds[res]
+
+    mask1 = df.r < r_max
+    mask2 = df.r > r_min
+
+    mask3 = df.z < z_max
+    mask4 = df.z > z_min
+    
+    mask5 = df.lpf < 0.8
+    mask6 = df.lpf > 0.35
+
+    mask = np.all([mask1, mask2, mask3, mask4, mask5, mask6], axis = 0)
+    return df[mask]
+
+
+
+
+features = ['w000', 'w100', 'w200', 'w300', 'w020_eigsysEv1', 'w020_eigsysEv2', 'w020_eigsysEv3', 'w120_eigsysEv1', 'w120_eigsysEv2', 'w120_eigsysEv3', 'w220_eigsysEv1', 'w220_eigsysEv2', 'w220_eigsysEv3', 'w320_eigsysEv1', 'w320_eigsysEv2', 'w320_eigsysEv3', 'w102_eigsysEv1', 'w102_eigsysEv2', 'w102_eigsysEv3', 'w202_eigsysEv1', 'w202_eigsysEv2', 'w202_eigsysEv3', 'q2', 'w2', 'q3', 'w3', 'q4', 'w4', 'q5', 'w5', 'q6', 'w6', 'q7', 'w7', 'q8', 'w8', 'com_0', 'com_1', 'com_2', 'com_3', 'cc_0_x', 'cc_0_y', 'cc_0_z', 'cc_1_x', 'cc_1_y', 'cc_1_z', 'cc_2_x', 'cc_2_y', 'cc_2_z', 'cc_3_x', 'cc_3_y', 'cc_3_z', 'nn', 'lpf', 'cov_ani_0', 'cov_ani_1', 'cov_ani_2', 'cov_ani_3', 'inv_ani_1', 'inv_ani_2']
+
+feature_lists = {'min_fun':['w000', 'w100', 'w200'], 
+                 'min_ev':['w020_eigsysEv1', 'w020_eigsysEv2', 'w020_eigsysEv3', 'w120_eigsysEv1', 'w120_eigsysEv2', 'w120_eigsysEv3', 'w220_eigsysEv1', 'w220_eigsysEv2', 'w220_eigsysEv3', 'w320_eigsysEv1','w320_eigsysEv2', 'w320_eigsysEv3', 'w102_eigsysEv1', 'w102_eigsysEv2', 'w102_eigsysEv3', 'w202_eigsysEv1', 'w202_eigsysEv2', 'w202_eigsysEv3'],
+                'curv_cen':['cc_0_x', 'cc_0_y', 'cc_0_z', 'cc_1_x', 'cc_1_y', 'cc_1_z', 'cc_2_x', 'cc_2_y', 'cc_2_z', 'cc_3_x', 'cc_3_y', 'cc_3_z'],
+                 'imt':['q2', 'w2', 'q3', 'w3', 'q4', 'w4', 'q5', 'w5', 'q6', 'w6', 'q7', 'w7', 'q8', 'w8'],
+                 'com': ['com_0', 'com_1', 'com_2', 'com_3'],
+                 'custom':['nn', 'lpf'],
+                    'aniso':['cov_ani_0', 'cov_ani_1', 'cov_ani_2', 'cov_ani_3', 'inv_ani_1', 'inv_ani_2']}
+
+
+def merge_measurements(directory):
+    file_paths = [directory + file_name for file_name in os.listdir(directory)]
+    measurement_list = []
+    for file_index in trange(len(file_paths)):
+        file_path = file_paths[file_index]
+        meas_index = file_path[44:-4:] + '_'
+        df_temp = pd.read_csv(file_path, index_col = 0)
+        df_temp.index = [meas_index + str(ind) for ind in df_temp.index]
+        measurement_list.append(df_temp)
+    return pd.concat(measurement_list)
 
 def read_mf(df, path):
     
@@ -59,7 +125,7 @@ def anisotropy_and_centroid(df):
         for i in ['x', 'y', 'z']:
             numerator = 'w'+j+'10_'+i
             denominator = 'w'+j+'00'
-            df['cc_'+j+'_'+i] = df[numerator]/df[denominator] - df[i]
+            df['cc_'+j+'_'+i] = df[numerator]/df[denominator]# - df[i]
         
         #center of mass
         df['com_'+j] = np.sqrt(np.sum(np.square(df[['cc_'+j+'_x', 'cc_'+j+'_y', 'cc_'+j+'_z']]), axis = 1))
@@ -74,9 +140,8 @@ def anisotropy_and_centroid(df):
 
 
 def process_measurement(path, xyz_path):
-    
     df = pd.DataFrame()
-    df =read_mf(df, path)
+    df = read_mf(df, path)
     df = read_mv(df, path)
     df = read_mt(df, path)
     df = read_qw(df, path)
@@ -85,16 +150,3 @@ def process_measurement(path, xyz_path):
 
     return df
 
-def cut_df(df, r_th = 30, z_th = 30):
-    x_mean = df.x.mean()
-    y_mean = df.y.mean()
-    df['r'] = np.sqrt(np.square(df.x-x_mean)+np.square(df.y - y_mean))
-
-    mask1 = df.r < df.r.max() - r_th
-    mask2 = df.r > df.r.min() + r_th
-
-    mask3 = df.z < df.z.max() - z_th
-    mask4 = df.z > df.z.min() + z_th
-
-    mask = np.all([mask1,mask2,mask3,mask4], axis = 0)
-    return df[mask]
