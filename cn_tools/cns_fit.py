@@ -6,7 +6,8 @@ from lmfit.models import GaussianModel, StepModel, Model
 from collections import Counter
 import re
 
-def compute_nearest_neighbours(file_name, poly_file):
+#def compute_nearest_neighbours()
+def compute_nearest_neighbours(df, poly_file):
     '''
     Computes the nearest neighbours from a poly file, writes them into a csv and saves it.
 
@@ -26,15 +27,13 @@ def compute_nearest_neighbours(file_name, poly_file):
         if match := re.search(pattern, line):
             ind_list += match.group()[2:-1].split(', ')
     nearest_neighbours = Counter(ind_list)
-    
     #write nearest neighbours into data frame and save
-    df = pd.read_csv(file_name, index_col = 0)
     for i in df.index:
         df.at[i, 'nn'] = nearest_neighbours[str(i)]
-    df.to_csv(file_name)
+        
+    return df
     
-
-def compute_local_contacts(file_name, Z):
+def compute_local_contacts(xyz, xyz_cut, Z, interval, cns, namespace = ''):
     '''
     Computes the local contacts of a configuration given the global contact number Z.
 
@@ -46,18 +45,14 @@ def compute_local_contacts(file_name, Z):
                     Nothing is returned. The data is written and saved in the csv under file_name.
     '''
     #compute cns data with finer resolution
-    precise_interval, precise_cns, precise_pc = cns_pc_from_file(file_name, dr = 0.001, lower_range=0, upper_range=0.5)
-    precise_index = get_index(precise_cns, Z)
-    precise_diamter = precise_interval[precise_index]
+
+    index = get_index(cns, Z)
+    diamter = interval[index]
     
     #compute local contacts
-    df = pd.read_csv(file_name, index_col = 0)
-    xyz = df[['x','y','z']].to_numpy()
     tree = KDTree(xyz)
-    #df['contact_number'] = [len(i)-1 for i in tree.query_ball_point(xyz, precise_diamter)]
-    df['contact_number'] = tree.query_ball_point(xyz, precise_diamter, return_length = True) -1 
-
-    df.to_csv(file_name)
+    
+    return tree.query_ball_point(xyz_cut, diamter, return_length = True) -1 
     
     
 def Z_from_cns(interval, cns, mu, sigma, boundary = None):
@@ -175,12 +170,15 @@ def cns_pc_from_file(file_name, dr=0.005, lower_range = 1, upper_range = 2):
     
     #compute data
     interval = np.arange(d_appr-lower_range, d_appr+upper_range, dr)
-    cns, pc = cns_pc(interval, dr, rho, xyz)
+    
+    tree = KDTree(xyz)
+    neighbors = tree.count_neighbors(tree, interval)
+    cns = neighbors/xyz.shape[0]-1
+    pc = np.diff(neighbors, prepend=neighbors[0])/(4*np.pi*interval**2*dr*rho)
     
     return interval, cns, pc
 
-
-def cns_pc(interval, dr, rho, xyz):
+def cns_cut(xyz, xyz_cut, mu, dr = 0.005, lower_range = 1, upper_range = 2):
     '''
     Computes the contact number scaling (cns) and the pair correlation of a configuration
         using the binary tree from scipy.spatial given a distance array (interval).
@@ -188,17 +186,18 @@ def cns_pc(interval, dr, rho, xyz):
             Parameters:
                     interval (np.array):  Array of distances serving as the x axis for the cns fit.
                     dr (float): The resolution of the distance array on which cns and pc a calculated.
-                    rho (float): The particle number density per volume (N_particles / V_total)
                     xyz (N*3 np.array): Array containing all particle coordinates
             Returns:
                     touple of np.arrays (cns, pc) 
     '''
-    tree = KDTree(xyz)
-    dists = tree.count_neighbors(tree, interval)
-    cns_av = dists/xyz.shape[0]-1
-    pc_av = np.diff(dists, prepend=dists[0])/(4*np.pi*interval**2*dr)
+    interval = np.arange(mu-lower_range, mu+upper_range, dr)
     
-    return cns_av, pc_av
+    tree = KDTree(xyz)
+    tree_cut = KDTree(xyz_cut)
+    
+    cns_cut = tree.count_neighbors(tree_cut, interval)/xyz_cut.shape[0]-1
+    
+    return interval, cns_cut
 
 
 
@@ -259,7 +258,6 @@ def compute_mean_sigma(sigma_file_path = '../Data/preprocessed/sigma.csv', resol
         index = [i for i in df_sigma.index if i[:3] in ['012', '008']]
     else:
         print('resolution has to be 20 or 30')
-    s = df_sigma.loc[index, 'sigma']
-    d_s = df_sigma.loc[index, 'd_sigma']
-    sigma_mean = (s/d_s**2).sum()/(1/d_s**2).sum()
+
+    sigma_mean = df_sigma.loc[index, 'sigma'].mean()
     return sigma_mean
